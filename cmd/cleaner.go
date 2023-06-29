@@ -16,14 +16,15 @@ func New() *cobra.Command {
 		Use:     "cleaner",
 		Short:   "Redis cleaner",
 		Long:    `Clean redis keys by pattern.`,
-		Example: "redis-cleaner --addr=127.0.0.1:6379 --match=log:*:*:* --count=1024 --interval=1s",
+		Example: "redis-cleaner --addr=127.0.0.1:6379 --match=* --count=1024 --interval=1s",
 		Args:    cobra.NoArgs,
 		Version: "0.1.0",
 		Run:     h.Run,
 	}
 	c.Flags().StringVar(&h.addr, "addr", "", "Redis addr")
-	// log:52b7f7a2-5f92-49a3-aae1-b96fdd2207c5:Article:221487313
-	c.Flags().StringVar(&h.match, "match", "log:*:*:*", "Redis key pattern")
+	c.Flags().StringVarP(&h.username, "username", "u", "", "Redis username")
+	c.Flags().StringVarP(&h.password, "password", "p", "", "Redis password")
+	c.Flags().StringVar(&h.match, "match", "", "Redis key pattern")
 	c.Flags().Int64Var(&h.count, "count", 1024, "Redis scan count")
 	c.Flags().DurationVar(&h.interval, "interval", 0, "Redis scan interval")
 	return c
@@ -31,7 +32,9 @@ func New() *cobra.Command {
 
 type handler struct {
 	// Redis addr.
-	addr string
+	addr     string
+	username string
+	password string
 
 	// Redis key pattern.
 	match string
@@ -44,12 +47,18 @@ type handler struct {
 }
 
 func (h *handler) Run(_ *cobra.Command, _ []string) {
+	if h.match == "" {
+		log.Fatal().Msg("match is required")
+	}
+
 	// new context.
 	ctx := context.Background()
 
 	// new redis client.
 	cli := redis.NewClient(&redis.Options{
-		Addr: h.addr,
+		Addr:     h.addr,
+		Username: h.username,
+		Password: h.password,
 	})
 
 	// ping redis.
