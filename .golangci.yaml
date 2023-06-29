@@ -1,0 +1,75 @@
+linters:
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - dupl
+    - durationcheck
+    - errcheck
+    - errname
+    - errorlint
+    - exportloopref
+    - gochecknoglobals
+    - gochecknoinits
+    - gocritic
+    - godot
+    - gofmt
+    - gofumpt
+    - goimports
+    - gomoddirectives
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - interfacer
+    - misspell
+    - nakedret
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - promlinter
+    - reassign
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - stylecheck
+    - tagliatelle
+    - tenv
+    - testableexamples
+    - thelper
+    - tparallel
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+    - zerologlint
+
+linters-settings:
+  revive:
+    rules:
+      - name: unexported-return
+        disabled: true
+
+output:
+  sort-results: true
+
+issues:
+  exclude-rules:
+    - path: "_test\\.go"
+      linters:
+        - gochecknoglobals
+    - path: pkg/version/version.go
+      linters:
+        - gochecknoglobals
+    - path: pkg/json/*
+      linters:
+        - gochecknoglobals
