@@ -1,0 +1,20 @@
+password: &password password
+
+base: &base
+  cleaner:
+    addr: 127.0.0.1:6379
+    password: *password
+  match: "user:*:profile"
+  count: 65536
+  interval: 50ms
+
+cleaner:
+  - scanner:
+      addr: 127.0.0.1:16379
+      password: *password
+    <<: *base
+
+  - scanner:
+      addr: 127.0.0.1:26379
+      password: *password
+    <<: *base
