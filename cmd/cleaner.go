@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // New returns a new cobra command.
@@ -15,68 +18,102 @@ func New() *cobra.Command {
 	c := &cobra.Command{
 		Use:     "cleaner",
 		Short:   "Redis cleaner",
-		Long:    `Clean redis keys by pattern.`,
-		Example: "redis-cleaner --addr=127.0.0.1:6379 --match=* --count=1024 --interval=1s",
+		Long:    `Clean redis keys by pattern. More config see config/redis-cleaner.yaml`,
+		Example: "redis-cleaner --config config/redis-cleaner.yaml",
 		Args:    cobra.NoArgs,
-		Version: "0.1.0",
+		Version: "0.2.0",
 		Run:     h.Run,
 	}
-	c.Flags().StringVar(&h.addr, "addr", "", "Redis addr")
-	c.Flags().StringVarP(&h.username, "username", "u", "", "Redis username")
-	c.Flags().StringVarP(&h.password, "password", "p", "", "Redis password")
-	c.Flags().StringVar(&h.match, "match", "", "Redis key pattern")
-	c.Flags().Int64Var(&h.count, "count", 1024, "Redis scan count")
-	c.Flags().DurationVar(&h.interval, "interval", 0, "Redis scan interval")
+	c.Flags().StringVar(&h.cfgFile, "config", "config/redis-cleaner.yaml", "config file")
 	return c
 }
 
 type handler struct {
-	// Redis addr.
-	addr     string
-	username string
-	password string
-
-	// Redis key pattern.
-	match string
-
-	// Redis scan count per time.
-	count int64
-
-	// interval time of per scan.
-	interval time.Duration
+	cfgFile string
 }
 
 func (h *handler) Run(_ *cobra.Command, _ []string) {
-	if h.match == "" {
-		log.Fatal().Msg("match is required")
+	if err := h.initConfig(); err != nil {
+		log.Fatal().Err(err).Str("config", h.cfgFile).Msg("init config failed")
 	}
 
-	// new context.
-	ctx := context.Background()
+	var cfg *Config
+	if err := viper.Unmarshal(&cfg); err != nil {
+		log.Fatal().Err(err).Msg("unmarshal config failed")
+	}
 
-	// new redis client.
-	cli := redis.NewClient(&redis.Options{
-		Addr:     h.addr,
-		Username: h.username,
-		Password: h.password,
+	if err := validator.New().Struct(cfg); err != nil {
+		log.Fatal().Err(err).Msg("validate config failed")
+	}
+
+	h.run(cfg)
+}
+
+// initConfig reads in config file and ENV variables if set.
+func (h *handler) initConfig() error {
+	// Use config file from the flag.
+	viper.SetConfigFile(h.cfgFile)
+
+	viper.AutomaticEnv() // read in environment variables that match
+
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err != nil {
+		return fmt.Errorf("read config file failed: %w", err)
+	}
+	return nil
+}
+
+func (h *handler) run(cfg *Config) {
+	for i, cleanerCfg := range cfg.Cleaner {
+		if err := h.cleanOne(context.Background(), cleanerCfg); err != nil {
+			log.Error().Err(err).Int("cleaner", i).Msg("clean failed")
+		}
+	}
+}
+
+func (h *handler) cleanOne(ctx context.Context, cfg *CleanerConfig) error {
+	// New redis scanner.
+	scanner := redis.NewClient(&redis.Options{
+		Addr:     cfg.Scanner.Addr,
+		Username: cfg.Scanner.Username,
+		Password: cfg.Scanner.Password,
 	})
 
 	// ping redis.
-	if err := cli.Ping(ctx).Err(); err != nil {
-		log.Fatal().Err(err).Msg("ping redis failed")
+	if err := scanner.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("ping redis failed: %w", err)
+	}
+
+	// New redis cleaner.
+	cleaner := scanner
+	if cfg.Cleaner != nil {
+		cleaner = redis.NewClient(&redis.Options{
+			Addr:     cfg.Cleaner.Addr,
+			Username: cfg.Cleaner.Username,
+			Password: cfg.Cleaner.Password,
+		})
+		if err := cleaner.Ping(ctx).Err(); err != nil {
+			return fmt.Errorf("ping redis failed: %w", err)
+		}
+	}
+
+	// scan count, default 65536.
+	count := cfg.Count
+	if count == 0 {
+		count = 65536
 	}
 
 	var cursor uint64
 	for {
 		// scan keys
-		keys, nextCursor, err := cli.Scan(ctx, cursor, h.match, h.count).Result()
+		keys, nextCursor, err := scanner.Scan(ctx, cursor, cfg.Match, count).Result()
 		if err != nil {
-			log.Err(err).Str("match", h.match).Uint64("cursor", cursor).Msg("scan redis failed")
+			return fmt.Errorf("scan redis failed: %w", err)
 		}
 
 		// delete keys
 		for _, key := range keys {
-			dur, err := cli.TTL(ctx, key).Result()
+			dur, err := scanner.TTL(ctx, key).Result()
 			if err != nil {
 				log.Err(err).Str("key", key).Msg("ttl redis key failed")
 				continue
@@ -86,7 +123,7 @@ func (h *handler) Run(_ *cobra.Command, _ []string) {
 			if dur > 0 {
 				continue
 			}
-			if err := cli.Del(ctx, key).Err(); err != nil {
+			if err := cleaner.Del(ctx, key).Err(); err != nil {
 				log.Err(err).Str("key", key).Msg("del redis key failed")
 			}
 		}
@@ -97,6 +134,7 @@ func (h *handler) Run(_ *cobra.Command, _ []string) {
 		cursor = nextCursor
 
 		// sleep interval
-		time.Sleep(h.interval)
+		time.Sleep(cfg.Interval)
 	}
+	return nil
 }

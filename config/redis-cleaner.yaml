@@ -1,0 +1,24 @@
+cleaner:
+  # Scanner are used to scan redis keys.
+  # Scanner is required.
+  - scanner:
+      addr: 127.0.0.1:6379
+      username: username
+      password: password
+
+    # Cleaner are used to delete redis keys.
+    # Cleaner is optional. If not set, Scanner will be used.
+    cleaner:
+      addr: 127.0.0.1:6379
+      username: username
+      password: password
+
+    # Redis key pattern. Required.
+    match: "*"
+
+    # Count is optional. Default is 65536.
+    count: 65536
+
+    # Interval time of per scan.
+    # Interval is optional. If not set, no sleep between scans.
+    interval: 10ms
