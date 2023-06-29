@@ -66,7 +66,7 @@ func (h *handler) initConfig() error {
 func (h *handler) run(cfg *Config) {
 	for i, cleanerCfg := range cfg.Cleaner {
 		if err := h.cleanOne(context.Background(), cleanerCfg); err != nil {
-			log.Error().Err(err).Int("cleaner", i).Msg("clean failed")
+			log.Error().Err(err).Int("index", i).Any("config", cleanerCfg).Msg("clean failed")
 		}
 	}
 }
@@ -79,11 +79,6 @@ func (h *handler) cleanOne(ctx context.Context, cfg *CleanerConfig) error {
 		Password: cfg.Scanner.Password,
 	})
 
-	// ping redis.
-	if err := scanner.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("ping redis failed: %w", err)
-	}
-
 	// New redis cleaner.
 	cleaner := scanner
 	if cfg.Cleaner != nil {
@@ -92,21 +87,12 @@ func (h *handler) cleanOne(ctx context.Context, cfg *CleanerConfig) error {
 			Username: cfg.Cleaner.Username,
 			Password: cfg.Cleaner.Password,
 		})
-		if err := cleaner.Ping(ctx).Err(); err != nil {
-			return fmt.Errorf("ping redis failed: %w", err)
-		}
-	}
-
-	// scan count, default 65536.
-	count := cfg.Count
-	if count == 0 {
-		count = 65536
 	}
 
 	var cursor uint64
 	for {
 		// scan keys
-		keys, nextCursor, err := scanner.Scan(ctx, cursor, cfg.Match, count).Result()
+		keys, nextCursor, err := scanner.Scan(ctx, cursor, cfg.Match, cfg.Count).Result()
 		if err != nil {
 			return fmt.Errorf("scan redis failed: %w", err)
 		}
@@ -125,7 +111,9 @@ func (h *handler) cleanOne(ctx context.Context, cfg *CleanerConfig) error {
 			}
 			if err := cleaner.Del(ctx, key).Err(); err != nil {
 				log.Err(err).Str("key", key).Msg("del redis key failed")
+				continue
 			}
+			log.Info().Str("key", key).Msg("del redis key success")
 		}
 
 		if nextCursor == 0 {

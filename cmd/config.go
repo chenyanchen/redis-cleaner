@@ -19,7 +19,9 @@ type CleanerConfig struct {
 	// Match is required.
 	Match string `validate:"required"`
 
-	// Count is optional. Default is 65536.
+	// Count is the number of keys to scan per time.
+	// Count is optional. Default is 10.
+	// See: https://redis.io/commands/scan
 	Count int64
 
 	// Interval time of per scan.
