@@ -78,6 +78,9 @@ func (h *handler) cleanOne(ctx context.Context, cfg *CleanerConfig) error {
 		Username: cfg.Scanner.Username,
 		Password: cfg.Scanner.Password,
 	})
+	if err := scanner.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("ping scanner failed: %w", err)
+	}
 
 	// New redis cleaner.
 	cleaner := scanner
@@ -87,6 +90,9 @@ func (h *handler) cleanOne(ctx context.Context, cfg *CleanerConfig) error {
 			Username: cfg.Cleaner.Username,
 			Password: cfg.Cleaner.Password,
 		})
+		if err := cleaner.Ping(ctx).Err(); err != nil {
+			return fmt.Errorf("ping cleaner failed: %w", err)
+		}
 	}
 
 	var cursor uint64
